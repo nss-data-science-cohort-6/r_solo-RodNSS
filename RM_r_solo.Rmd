@@ -4,27 +4,225 @@ output: html_document
 date: "2022-11-12"
 ---
 
-```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+```{r load-packages, include=FALSE}
+library(dplyr)
+library(magrittr)
+library(knitr)
+library(ggplot2)
+library(grid)
+library(corrr)
 ```
 
-## R Markdown
+1. Read in `districts.csv` into a tibble named `districts`. How many rows and columns does it contain?
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
-
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
-```
-
-## Including Plots
-
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
-```
-
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+```{r}
+districts <- read.csv(file = 'data/districts.csv')
+print(nrow(districts))
 print(ncol(districts))
+```
+
+146 rows and 27 columns
+
+2. Notice that the first row corresponds to the whole State of Tennessee. 
+Remove this row and save the result back to `districts`.
+
+```{r}
+districts=districts[-1,]
+```
+
+3. How many districts have a proficiency rate of at least 80% for both alg_1 and eng_1?
+
+```{r}
+sum(districts$alg_1>=80 & districts$eng_1>=80, na.rm=T)
+```
+
+13 districts
+
+4. How many districts have a proviciency rate less than 50% for either alg_1 or eng_1?
+
+```{r}
+sum(districts$alg_1<50 | districts$eng_1<50, na.rm=T)
+```
+
+8 districts
+
+5. Which district has the lowest graduation rate?
+
+```{r}
+min(districts$grad, na.rm=T)
+row.names(districts)[which(districts$grad==11.1)]
+districts[143,]
+```
+
+Tenn School for Blind had the lowest graduation rate with 11.1%
+
+6. Within the Mid Cumberland region, which district has the highest ACT composite?
+
+```{r}
+ACT <- districts %>%
+        filter(region == 'Mid Cumberland') %>%
+        filter(act_composite == max(act_composite, na.rm = TRUE))
+ACT
+```
+
+Williamson County has highest ACT composite score with 23.8
+
+7. Create a histogram showing the distribution of graduation rates. What can you say about this distribution?
+
+```{r}
+ggplot(districts, aes(x=grad)) + geom_histogram()
+```
+
+Data seems left skewed
+
+8. Create a scatter plot to compare alg_1 proficiency rates to alg_2 rates. What do you notice? Facet this plot by region. Does anything stand out when you facet the plots?
+
+```{r}
+ggplot(districts, aes(x=alg_1, y=alg_2)) + geom_point()
+```
+
+high positive correlation
+
+```{r}
+ggplot(districts, aes(alg_1, alg_2, color = region)) +  
+       geom_point() +
+       facet_wrap((.~region), nrow = 2, ncol = 4) +
+       scale_color_brewer(palette="Accent")
+```
+
+All regions seem to show positive correlation except for Southeast and Upper Cumberland
+
+9. Create a bar chart showing the total enrollment by region. Which region has the highest total enrollment? Which has the smallest?
+
+```{r}
+ggplot(districts, aes(y=enrollment, x=region)) + 
+     geom_bar(position="dodge", stat="identity")
+```
+
+Southwest/Memphis haa the highest enrollment while Northwest has the lowest.
+
+10. When creating this bar chart you may have noticed that some districts have missing enrollment values. For how many districts is this the case?
+
+4
+
+11. What is the mean graduation rate across all districts? What might be wrong with using just the regular mean to assess average graduation rates?
+
+```{r}
+mean(districts$grad, na.rm = TRUE)
+```
+
+90
+
+12. Redo the previous question but use a weighted average (`weighted.mean`) graduation across all districts, weighing by enrollment. How much does this change your answer? Can you explain using the data the reason for the big change from using the mean?
+
+```{r}
+weighted.mean(districts$grad, dplyr::coalesce(districts$enrollment,0), na.rm=T)
+```
+
+87.3
+
+13. Create a boxplot showing graduation rates per region. Does anything stand out?
+
+```{r}
+ggplot(districts, aes(x=region, y=grad, fill=region)) +
+    geom_boxplot()
+```
+
+Mid Cumberland has lowest outlier. Southwest/Memphis seems to have largest interquartile range.
+
+14. Find the weighted average of graduation rates by region using enrollment as weights. Compare the results you get for the weighted average to what you see from the boxplots.
+
+```{r}
+districts %>%
+  select(grad, enrollment, region) %>% 
+  group_by(region) %>% 
+  summarise(weighted.mean(grad, enrollment, na.rm = T))
+```
+
+
+15. For many districts, values for `alg_2` are lower than for `alg_1`. Create a histogram showing the distribution of differences (`alg_1` - `alg_2`). Which school had the largest drop from `alg_1` to `alg_2`? For what percentage of schools is it true that `alg_2` is larger than `alg_1`? Is there a similar drop off for `eng_2` and `eng_3`?
+
+```{r}
+districts$difference <- (districts$alg_1 - districts$alg_2)
+ggplot(districts, aes(x=difference)) + geom_histogram()
+```
+
+```{r}
+districts[which.max(districts$difference),]
+```
+Pickett County had largest drop.
+
+```{r}
+districts %>% count(alg_2 > alg_1) 
+18 / (99+18)
+```
+15%
+
+```{r}
+districts$diff_eng <- (districts$eng_2 - districts$eng_3)
+districts %>% count(eng_3 > eng_2)
+1 / (125+1)
+```
+
+
+16. You may have noticed that a lot of rows are missing values. Which district has the largest number of missing values? What do you notice about schools that have a lot of missing values?
+
+```{r}
+na_rows = rowSums(is.na(districts))
+na_rows
+```
+```{r}
+districts[c(2,26,28,31,32,59,62,64,81,82,92,104,108,118,138,140,141,144),]
+```
+West Tenn School for Deaf has the largest number of missing values. Most schools with a lot of missing values are missing algebra, biology, chemistry and english scores as well as ACT, graduation and dropout rate.
+
+17. Find the correlation between graduation rate and all other variables. Create a horizontal bar chart showing these correlations. Make sure that your plot is ordered by correlation values. What do you notice from these correlations?
+
+```{r}
+cor = cor(districts[, unlist(lapply(districts, is.numeric))], use = "complete.obs")
+cor
+```
+```{r}
+# this correlation code gave different correlation values but chart looks cool
+cor_grad <- districts %>% 
+  correlate() %>% 
+  focus(grad)
+cor_grad
+
+cor_grad %>% 
+  mutate(term = factor(term, levels = term[order(grad)])) %>%
+  ggplot(aes(x = term, y = grad)) +
+    geom_bar(stat = "identity", fill="steelblue") +
+    ylab("Graduation Rate Correlation") +
+    xlab("Variable") +
+    coord_flip()
+```
+18. Create a scatterplot for `grad` vs. `suspended`. Does what you see make sense given your answer from the previous part?
+
+19. Create a linear regression model using `lm` with target variable `grad` and predictor variable `suspended`. What R^2 value does this model have? What is the interpretation of this number?
+
+20. Add the regression line to your scatterplot using `geom_smooth` with `method='lm'`. How do you feel about the regression line after seeing it plotted on the scatterplot?
+
+**Continued Exploration and Practice**
+
+21. Read in the school-level testing data for 2014, available [here](https://www.tn.gov/content/dam/tn/education/data/data_2014_school_base.xlsx). You might find the readxl library useful for this task. If you use this library, be sure to look at the `na` argument for the `read_excel` function.
+
+22. How many schools have at least 20 percent of students below bsc for Algebra I? Which districts do these schools belong to?
+
+23. How many schools have at least 20 percent of students below bsc for _both_ Algebra I and English I?
+
+24. Which grade has the highest pct_adv for Algebra I? Plot the average pct_adv per grade level as a bar chart. Make sure that the bars are ordered by grade level.
+
+25. Find the correlation between pct_adv for Algebra I and pct_adv for Algebra II by school. Create a scatterplot showing Algebra II scores vs. Algebra I scores by school.
+
+26. Find all schools in Rutherford County that have "High School" in their name. For these schools, create a chart (your choice) showing the differences in pct_below_bsc, pct_bsc, pct_prof, and pct_adv for Algebra I when looking across all subgroups and grades.
+
+27. I claim that smaller schools do a better job preparing students for Algebra I standardized tests. Find the average number of valid tests (a proxy for the school size) for schools where the pct_prof_adv for Algebra I is greater than 95. Compare this to the average number of valid tests for all schools. In light of this result, how does my claim look?
+
+28. I also claim that smaller schools do a worse job preparing students for Algebra I standardized tests. Find the average number of valid tests (a proxy for the school size) for schools where the pct_prof_adv for Algebra I is less than 25. Compare this to the average number of valid tests for all schools. In light of this result, how does my claim look now?
+
+29. Create a scatterplot showing pct_prov_adv vs. valid_tests. Can you use this to explain the result for the previous two questions?
+
+If you finish all of the above questions, continue to explore the two datasets and see what else interesting you can find.
+
+Also, check out the plotly library for R. The `ggplotly` function makes it very easy to convert ggplot plots into interactive plotly plots.
