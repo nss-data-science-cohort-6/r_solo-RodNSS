@@ -11,6 +11,7 @@ library(knitr)
 library(ggplot2)
 library(grid)
 library(corrr)
+library(readxl)
 ```
 
 1. Read in `districts.csv` into a tibble named `districts`. How many rows and columns does it contain?
@@ -125,7 +126,9 @@ weighted.mean(districts$grad, dplyr::coalesce(districts$enrollment,0), na.rm=T)
 
 ```{r}
 ggplot(districts, aes(x=region, y=grad, fill=region)) +
-    geom_boxplot()
+    geom_boxplot() + 
+    scale_x_discrete(guide = guide_axis(n.dodge = 2)) +
+    NULL
 ```
 
 Mid Cumberland has lowest outlier. Southwest/Memphis seems to have largest interquartile range.
@@ -134,9 +137,8 @@ Mid Cumberland has lowest outlier. Southwest/Memphis seems to have largest inter
 
 ```{r}
 districts %>%
-  select(grad, enrollment, region) %>% 
   group_by(region) %>% 
-  summarise(weighted.mean(grad, enrollment, na.rm = T))
+  summarize(weighted.mean(grad, dplyr::coalesce(enrollment, 0), na.rm = T))
 ```
 
 
@@ -153,7 +155,7 @@ districts[which.max(districts$difference),]
 Pickett County had largest drop.
 
 ```{r}
-districts %>% count(alg_2 > alg_1) 
+districts %>% count(alg_2 > alg_1, na.rm = TRUE) 
 18 / (99+18)
 ```
 15%
@@ -199,19 +201,88 @@ cor_grad %>%
 ```
 18. Create a scatterplot for `grad` vs. `suspended`. Does what you see make sense given your answer from the previous part?
 
+```{r}
+districts %>% 
+ggplot(aes(suspended, grad)) +
+  geom_point(alpha=0.5)
+```
+
+
 19. Create a linear regression model using `lm` with target variable `grad` and predictor variable `suspended`. What R^2 value does this model have? What is the interpretation of this number?
 
+```{r}
+grad.suspended.lm <- lm(grad ~ suspended, data = districts)
+
+summary(grad.suspended.lm)
+```
+
+
 20. Add the regression line to your scatterplot using `geom_smooth` with `method='lm'`. How do you feel about the regression line after seeing it plotted on the scatterplot?
+
+```{r}
+districts %>% 
+ggplot(aes(suspended, grad)) +
+  geom_point(alpha=0.5) +
+  geom_smooth(method="lm")
+```
+
 
 **Continued Exploration and Practice**
 
 21. Read in the school-level testing data for 2014, available [here](https://www.tn.gov/content/dam/tn/education/data/data_2014_school_base.xlsx). You might find the readxl library useful for this task. If you use this library, be sure to look at the `na` argument for the `read_excel` function.
 
-22. How many schools have at least 20 percent of students below bsc for Algebra I? Which districts do these schools belong to?
+```{r}
+school = read_excel("data/data_2014_school_base.xlsx", na = c("**", "*"))
+school
+```
+22. How many schools have at least 20 percent of students below bsc for Algebra I?
+
+```{r}
+below=filter(school, subject == "Algebra I" & pct_below_bsc >= 20)
+
+```
+
+```{r}
+length(unique(below[["school_name"]]))
+```
+
+249 schools have at least 20 percent of students below bsc for Algebra I.
+
+Which districts do these schools belong to?
+
+```{r}
+below = filter(school, subject == "Algebra I" & pct_below_bsc >= 20)
+unique(below$system_name)
+```
+
 
 23. How many schools have at least 20 percent of students below bsc for _both_ Algebra I and English I?
 
+```{r}
+alg=filter(school, subject == c("Algebra I","Algebra II" ) & pct_below_bsc >= 20)
+```
+```{r}
+length(unique(alg[["school_name"]]))
+```
+272
+
 24. Which grade has the highest pct_adv for Algebra I? Plot the average pct_adv per grade level as a bar chart. Make sure that the bars are ordered by grade level.
+
+```{r}
+school[order(school$pct_adv, decreasing = TRUE),]
+```
+Grade 8 has the highest pct_adv for Algebra I.
+
+```{r}
+alg2 = filter(school, subject=="Algebra I")
+alg2
+```
+```{r} 
+ggplot(aes(grade, pct_adv), data = alg2) + 
+  stat_summary(fun.y = "mean", geom = "bar") #need to order x axis
+``` 
+
+
 
 25. Find the correlation between pct_adv for Algebra I and pct_adv for Algebra II by school. Create a scatterplot showing Algebra II scores vs. Algebra I scores by school.
 
